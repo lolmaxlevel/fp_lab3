@@ -1,38 +1,29 @@
 -module(interpolation).
 -export([linear_interpolation/2, newton_interpolation/2, interpolate/4, generate_seq/3]).
 
-
 interpolate(MainPid, Method, Frequency, Data) ->
   % Perform interpolation
-  case Method of
-    "linear" -> LinearData = case length(Data) >= 2 of
-                 true -> linear_interpolation(Frequency, Data);
-                 false -> ok
-               end,
-                 NewtonData = ok;
-    "newton" -> NewtonData = case length(Data) >= 4 of
-                 true -> newton_interpolation(Frequency, Data);
-                 false -> ok
-               end,
-                 LinearData = ok;
-    "all" -> LinearData = case length(Data) >= 2 of
-               true -> linear_interpolation(Frequency, Data);
-               false -> ok
-             end,
-               NewtonData = case length(Data) >= 4 of
-               true -> newton_interpolation(Frequency, Data);
-               false -> ok
-             end;
-    _ -> io:format("Unknown interpolation method: ~s~n", [Method]),
-          LinearData = ok,
-          NewtonData = ok
-  end,
+  {LinearData, NewtonData} = perform_interpolation(Method, Frequency, Data),
   MainPid ! {self(), LinearData, NewtonData}.
 
+perform_interpolation("linear", Frequency, Data) ->
+  {linear_interpolation(Frequency, Data), ok};
+perform_interpolation("newton", Frequency, Data) ->
+  {ok, newton_interpolation(Frequency, Data)};
+perform_interpolation("all", Frequency, Data) ->
+  {linear_interpolation(Frequency, Data), newton_interpolation(Frequency, Data)};
+perform_interpolation(_, _, _) ->
+  io:format("Unknown interpolation method~n"),
+  {ok, ok}.
+
+linear_interpolation(_, Data) when length(Data) < 2 ->
+  ok;
 % Linear interpolation
-linear_interpolation(Frequency, Data) ->
+linear_interpolation(Frequency, Data) when length(Data) >= 2 ->
   [Last1, Last2 | _] = lists:reverse(Data),
-  linear_interpolation(Frequency, [Last2, Last1], []).
+  linear_interpolation(Frequency, [Last2, Last1], []);
+linear_interpolation(_, _) ->
+  [].
 
 linear_interpolation(Frequency, [{X1, Y1}, {X2, Y2}], Acc) when X1 =< X2 ->
   InterpolatedPoints = generate_seq(X1, X2 + Frequency, Frequency),
@@ -52,11 +43,13 @@ generate_seq(Current, End, Step, Acc) when Current =< End ->
 generate_seq(_, _, _, Acc) ->
   lists:reverse(Acc).
 
-newton_interpolation(Frequency, Data) ->
+newton_interpolation(_, Data) when length(Data) < 4 ->
+  ok;
+newton_interpolation(Frequency, Data) when length(Data) >= 4 ->
   [Last1, Last2, Last3, Last4 | _] = lists:reverse(Data),
   PointsToInterpolate = generate_seq(element(1, Last4), element(1, Last1) + Frequency, Frequency),
-  InterpolatedValues = [{X,
-    newton_polynomial([Last4, Last3, Last2, Last1], X)} || X <- PointsToInterpolate],
+  InterpolatedValues = [{X, newton_polynomial([Last4, Last3, Last2, Last1], X)}
+    || X <- PointsToInterpolate],
   InterpolatedValues.
 
 newton_polynomial(Data, X) ->
@@ -65,5 +58,5 @@ newton_polynomial(Data, X) ->
   DivDiff2 = ((Y3 - Y2) / (X3 - X2) - DivDiff1) / (X3 - X1),
   DivDiff3 = (((Y4 - Y3) / (X4 - X3) - (Y3 - Y2) / (X3 - X2))
     / (X4 - X2) - DivDiff2) / (X4 - X1),
-  Y1 + (X - X1) * DivDiff1 + (X - X1) * (X - X2) * DivDiff2 +
-    (X - X1) * (X - X2) * (X - X3) * DivDiff3.
+  Y1 + (X - X1) * DivDiff1 + (X - X1) * (X - X2)
+    * DivDiff2 + (X - X1) * (X - X2) * (X - X3) * DivDiff3.
